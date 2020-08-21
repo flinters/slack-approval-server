@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"time"
 
@@ -22,7 +23,18 @@ func newPool(server string) *redis.Pool {
 		IdleTimeout: 240 * time.Second,
 
 		Dial: func() (redis.Conn, error) {
-			c, err := redis.DialURL(server)
+			u, err := url.Parse(server)
+			if err != nil {
+				return nil, err
+			}
+			// ignore username
+			if u.User != nil {
+				p, s := u.User.Password()
+				if s {
+					u.User = url.UserPassword("", p)
+				}
+			}
+			c, err := redis.DialURL(u.String())
 			if err != nil {
 				return nil, err
 			}
