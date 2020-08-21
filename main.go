@@ -53,6 +53,7 @@ type EventCreateRequest struct {
 }
 
 type Event struct {
+	Id           string   `json:"id"`
 	TimeoutEpoch int      `json:"timeout_epoch"`
 	Approvers    []string `json:"approvers"`
 }
@@ -112,6 +113,7 @@ func main() {
 		defer conn.Close()
 
 		event := Event{
+			Id:           id,
 			TimeoutEpoch: req.TimeoutEpoch,
 			Approvers:    []string{},
 		}
@@ -127,15 +129,27 @@ func main() {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		c.JSON(http.StatusCreated, eventString)
+		c.JSON(http.StatusCreated, event)
 	})
 
-	// router.GET("/events/:id", func(c *gin.Context) {
-	// 	conn := pool.Get()
-	// 	defer conn.Close()
-	// 	id := c.Param("id")
-	// 	conn.
-	// })
+	router.GET("/events/:id", func(c *gin.Context) {
+		conn := pool.Get()
+		defer conn.Close()
+
+		id := c.Param("id")
+		bytes, err := redis.Bytes(conn.Do("GET", id))
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		var event Event
+		err = json.Unmarshal(bytes, &event)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, event)
+	})
 
 	router.Run(":" + port)
 }
