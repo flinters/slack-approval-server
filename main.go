@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -418,8 +419,15 @@ func processCallback(msg CallbackMessage, pool *redis.Pool) {
 		log.Println("Failed to post message:", err.Error())
 		return
 	}
+	defer res.Body.Close()
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		log.Println("Failed to read body:", res.StatusCode)
+		return
+	}
 	if (res.StatusCode % 100) != 2 {
 		log.Println("Response status is not good:", res.Status)
+		log.Println("body:", string(body))
 		return
 	}
 	log.Println("processCallback done")
