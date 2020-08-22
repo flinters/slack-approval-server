@@ -101,7 +101,7 @@ func main() {
 	router.POST("/events", func(c *gin.Context) {
 		var req EventCreateRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request to create an event"})
 			return
 		}
 		id, err := MakeRandomStr(16)
