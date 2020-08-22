@@ -367,6 +367,7 @@ func formatMessage(msg CallbackMessage, event *Event) ([]byte, error) {
 	}
 	response := make(map[string]interface{})
 	response["blocks"] = blocks
+	response["replace_original"] = "true"
 	responseBytes, err := json.Marshal(response)
 	if err != nil {
 		return nil, err
