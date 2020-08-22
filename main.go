@@ -82,6 +82,7 @@ func NewEvent(timeoutEpoch int64) (*Event, error) {
 		ID:           id,
 		TimeoutEpoch: timeoutEpoch,
 		Approvers:    []string{},
+		Rejecters:    []string{},
 		Status:       InProgress,
 	}
 
@@ -103,14 +104,31 @@ func (event *Event) refreshStatus() {
 	}
 }
 
+func isIn(list []string, target string) bool {
+	for _, e := range list {
+		if e == target {
+			return true
+		}
+	}
+	return false
+}
+
 func (event *Event) Approve(user string) {
-	event.Approvers = append(event.Approvers, user)
 	event.refreshStatus()
+	if event.Status == InProgress && !isIn(event.Approvers, user) {
+		log.Println("Event", event.ID, "is approved by", user)
+		event.Approvers = append(event.Approvers, user)
+		event.refreshStatus()
+	}
 }
 
 func (event *Event) Reject(user string) {
-	event.Rejecters = append(event.Rejecters, user)
 	event.refreshStatus()
+	if event.Status == InProgress && !isIn(event.Rejecters, user) {
+		log.Println("Event", event.ID, "is rejected by", user)
+		event.Rejecters = append(event.Rejecters, user)
+		event.refreshStatus()
+	}
 }
 
 // slack からくるメッセージのうち興味のある部分だけ
@@ -293,8 +311,79 @@ func fetchEvent(id string, conn redis.Conn) (*Event, error) {
 	return &event, nil
 }
 
-func formatMessage(msg CallbackMessage, event *Event) []byte {
-	return nil
+func formatMessage(msg CallbackMessage, event *Event) ([]byte, error) {
+	blocks, ok := msg.Message["blocks"]
+	if !ok {
+		return nil, errors.New("block is not found")
+	}
+	switch blocks := blocks.(type) {
+	case []interface{}:
+		for i, block := range blocks {
+			switch block := block.(type) {
+			case map[string]interface{}:
+				if block["type"] == "actions" {
+					type Text struct {
+						Type string `json:"type"`
+						Text string `json:"text"`
+					}
+					type Reply struct {
+						Type string `json:"type"`
+						Text Text   `json:"text"`
+					}
+
+					switch event.Status {
+					case Approved:
+						blocks[i] = Reply{
+							Type: "section",
+							Text: Text{
+								Type: "mrkdwn",
+								Text: "Approved by " + toMentionList(event.Approvers),
+							},
+						}
+					case Rejected:
+						blocks[i] = Reply{
+							Type: "section",
+							Text: Text{
+								Type: "mrkdwn",
+								Text: "Rejected by " + toMentionList(event.Rejecters),
+							},
+						}
+					case Timeout:
+						blocks[i] = Reply{
+							Type: "section",
+							Text: Text{
+								Type: "mrkdwn",
+								Text: "Timed out",
+							},
+						}
+					}
+				}
+			default:
+				return nil, errors.New("A blocks element is not a map")
+			}
+		}
+	default:
+		return nil, errors.New("A blocks element is not an array")
+	}
+	response := make(map[string]interface{})
+	response["blocks"] = blocks
+	responseBytes, err := json.Marshal(response)
+	if err != nil {
+		return nil, err
+	}
+	log.Println(string(responseBytes))
+	return responseBytes, nil
+}
+
+func toMentionList(userIDs []string) string {
+	text := ""
+	for i, userID := range userIDs {
+		if i != 0 {
+			text += ", "
+		}
+		text += "<@" + userID + ">"
+	}
+	return text
 }
 
 func processCallback(msg CallbackMessage, pool *redis.Pool) {
@@ -317,7 +406,11 @@ func processCallback(msg CallbackMessage, pool *redis.Pool) {
 		return
 	}
 
-	json := formatMessage(msg, event)
+	json, err := formatMessage(msg, event)
+	if err != nil {
+		log.Println("Failed to format message:", err.Error())
+		return
+	}
 
 	res, err := http.Post(msg.ResponseURL, "application/json", bytes.NewBuffer(json))
 	if err != nil {
