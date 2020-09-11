@@ -1,9 +1,6 @@
+# slack-approval-server
 
-# go-getting-started
-
-A barebones Go app, which can easily be deployed to Heroku.
-
-This application supports the [Getting Started with Go on Heroku](https://devcenter.heroku.com/articles/getting-started-with-go) article - check it out.
+This is a server that works in conjunction with the [slack-approval command](https://github.com/septeni-original/slack-approval).
 
 ## Running Locally
 
